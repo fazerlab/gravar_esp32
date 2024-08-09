@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width">
+  <title>replit</title>
+  <link href="style.css" rel="stylesheet" type="text/css" />
+</head>
+
+<script type="module" src="bundle.js"></script>
+
+
+
+<body>
+  Esptool
+  <button id="connectButton" ">Conectar</button>
+  <button id="eraseButton" ">Erase</button>
+  <button id="programButton" ">Programar</button>
+  <button id="resetButton" ">Reset</button>
+  
+  <p id="demo"></p>
+  
+  <script type="module">
+    //import { ESPLoader, LoaderOptions, Transport } from "bundle.js";
+    //import { ESPLoader, FlashOptions, LoaderOptions, Transport } from "/lib";
+    import * as esptooljs from "./bundle.js";
+    
+    const ESPLoader = esptooljs.ESPLoader;
+    const Transport = esptooljs.Transport;
+
+    const connectButton = document.getElementById("connectButton");
+    const eraseButton = document.getElementById("eraseButton")
+    const programButton = document.getElementById("programButton");
+    const resetButton = document.getElementById("resetButton");
+
+    let transport = undefined;    
+    var device;
+    let esploader;
+    let chipDesc;
+    let chip;
+
+    //-----------------------------------------------------------------------------
+    // https://github.com/espressif/esptool-js/blob/1e721b05e59a251e9d160c6dab4c63021269a35d/examples/typescript/src/index.ts#L84
+    // https://github.com/espressif/esp-launchpad/blob/9ab150d7b32e4836fc3a33bcd9a00a1cfb1638c1/js/index.js#L396
+      connectButton.onclick = async () => {
+          device = await navigator.serial.requestPort();   
+          console.log("Device:") ;
+          console.log(device) ;
+          transport = new Transport(device);
+          //try {
+               const flashOptions = {
+                                    transport,
+                                    baudrate: 921600, //115200
+                                    //terminal: espLoaderTerminal,
+                                    };
+                esploader = new ESPLoader(flashOptions);
+                //connected = true;
+                console.log("-------------- main: -----------") ;
+                chipDesc = await esploader.main();
+                chip = esploader.chip.CHIP_NAME;
+                console.log("-------------- flashId: -----------") ;
+                await esploader.flashId();
+                console.log("----------- Variavel Chip:--------") ;
+                console.log(chip) ;
+            
+            //} catch(e) {
+            //  console.log(e) ;
+         // }
+       //document.getElementById("demo").innerHTML = device;
+    }
+
+    //-----------------------------------------------------------------------------
+    //https://github.com/espressif/esp-launchpad/blob/9ab150d7b32e4836fc3a33bcd9a00a1cfb1638c1/js/index.js#L500
+    //https://github.com/espressif/esptool-js/blob/1e721b05e59a251e9d160c6dab4c63021269a35d/examples/typescript/src/index.ts#L134
+    eraseButton.onclick = async () => {      
+      try {
+        await esploader.eraseFlash();
+      } catch (e) {
+        console.error(e);        
+      } finally {        
+      }
+      
+      //await esploader.eraseFlash();
+    };
+
+    //-----------------------------------------------------------------------------
+    //https://github.com/espressif/esp-launchpad/blob/9ab150d7b32e4836fc3a33bcd9a00a1cfb1638c1/js/index.js#L628
+    //https://github.com/espressif/esptool-js/blob/1e721b05e59a251e9d160c6dab4c63021269a35d/examples/typescript/src/index.ts#L309
+    programButton.onclick = async () => {
+    console.log("----------- Inicio Gravacao Firmware --------") ;
+
+      let fileURL = "https://33166ceb-1b35-45b5-ab5c-0965781387a8-00-15jh5h0dfiym8.picard.replit.dev/merged-flash.bin"
+      let data = await getImageData(fileURL);    
+      let fileArr = [];
+      let offset = 0x0000;
+      fileArr.push({data:data, address:offset});      
+      
+      const flashOptions = {
+          fileArray : fileArr,
+          flashSize: "keep",
+          flashMode: undefined,
+          flashFreq: undefined,
+          eraseAll: true, //false
+          compress: true,
+      };
+      
+      await esploader.writeFlash(flashOptions);    
+      console.log("----------- Fim Gravacao Firmware --------") ;
+
+      if (transport) {
+        console.log("----------- Reset ESP32 --------") ;
+        await transport.setDTR(false);
+        await new Promise((resolve) => setTimeout(resolve, 100));
+        await transport.setDTR(true);
+      }
+
+      
+    }
+    
+    //-----------------------------------------------------------------------------
+    // https://github.com/espressif/esp-launchpad/blob/9ab150d7b32e4836fc3a33bcd9a00a1cfb1638c1/js/utils.js#L22
+    function getImageData(fileURL) {
+        return new Promise(resolve => {
+            var xhr = new XMLHttpRequest();
+            xhr.open('GET', fileURL, true);
+            xhr.responseType = "blob";
+            xhr.send();
+            xhr.onload = function () {
+                if (xhr.readyState === 4 && xhr.status === 200) {
+                    var blob = new Blob([xhr.response], { type: "application/octet-stream" });
+                    var reader = new FileReader();
+                    reader.onload = (function (theFile) {
+                        return function (e) {
+                            resolve(e.target.result);
+                        };
+                    })(blob);
+                    reader.readAsBinaryString(blob);
+                } else {
+                    resolve(undefined);
+                }
+            };
+            xhr.onerror = function () {
+                resolve(undefined);
+            }
+        });
+    }
+    
+    //-----------------------------------------------------------------------------
+    // https://github.com/espressif/esptool-js/blob/1e721b05e59a251e9d160c6dab4c63021269a35d/examples/typescript/src/index.ts#L126C1-L132C3
+    //https://github.com/espressif/esp-launchpad/blob/9ab150d7b32e4836fc3a33bcd9a00a1cfb1638c1/js/index.js#L455
+    resetButton.onclick = async () => {      
+      if (transport) {
+        console.log("----------- Reset ESP32 --------") ;
+        await transport.setDTR(false);
+        await new Promise((resolve) => setTimeout(resolve, 100));
+        await transport.setDTR(true);
+      }
+    };
+    
+    //-----------------------------------------------------------------------------
+    const espLoaderTerminal = {
+      clean() {
+        term.clear();
+      },
+      writeLine(data) {
+        term.writeln(data);
+      },
+      write(data) {
+        term.write(data);
+      },
+    };
+
+
+    
+    
+    function _sleep(ms) {
+        return new Promise(resolve => setTimeout(resolve, ms));
+    }
+  </script>
+</body>
+
+</html>
