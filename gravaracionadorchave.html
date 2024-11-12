@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width">
+  <title>replit</title>
+  <link href="style.css" rel="stylesheet" type="text/css" />
+
+  <style>
+    button{
+      background-color:#44c767;
+      border-radius:28px;
+      border:1px solid #18ab29;
+      display:inline-block;
+      cursor:pointer;
+      color:#ffffff;
+      font-family:Arial;
+      font-size:18px;
+      padding:7px 62px;
+      text-decoration:none;
+      text-shadow:0px 1px 0px #2f6627;
+    }
+
+    progress{
+      width: 350px;
+    }
+    
+
+  </style>
+</head>
+
+<script type="module" src="bundle.js"></script>
+
+
+
+<body>
+  <h1>Gravador Firmware Acionador Chave</h1>
+  <button id="connectButton" ">Conectar e gravar Firmware</button> 
+  <div style="visibility: hidden;" id="lblConnTo">Conectado ao dispositivo:  </div>
+  <progress id="indicadorprogresso" value="0" max="100"> 32% </progress>
+  <div id="lblestado"></div>
+  
+  
+  <p id="demo"></p>
+  
+  <script type="module">
+    /*
+     derivado de index.html e index01.html 
+     gravaracionadorchave.html - versao para usuario trabalhos na interface e design
+     
+     https://33166ceb-1b35-45b5-ab5c-0965781387a8-00-15jh5h0dfiym8.picard.replit.dev/gravaracionadorchave.html
+     
+    */
+    //import { ESPLoader, LoaderOptions, Transport } from "bundle.js";
+    //import { ESPLoader, FlashOptions, LoaderOptions, Transport } from "/lib";
+    import * as esptooljs from "./bundle.js";
+    
+    const ESPLoader = esptooljs.ESPLoader;
+    const Transport = esptooljs.Transport;
+
+    const connectButton = document.getElementById("connectButton");
+    const eraseButton = document.getElementById("eraseButton")
+    const programButton = document.getElementById("programButton");
+    const resetButton = document.getElementById("resetButton");
+    const lblConnTo = document.getElementById("lblConnTo");
+    const progressbar = document.getElementById("indicadorprogresso");
+    const lblEstado = document.getElementById("lblestado");
+
+    //lblConnTo.style.visibility = "hidden";
+
+    let transport = undefined;    
+    var device;
+    let esploader;
+    let chipDesc;
+    let chip;
+
+   // lblEstado.innerHTML = "<b> <span style='background-color:#00cc66 ;color:#ffffff; text-align: center; 	padding: 1px;' > Firmware Acionador Gravado com Sucesso  </span> </b>"
+
+    //-----------------------------------------------------------------------------
+    // https://github.com/espressif/esptool-js/blob/1e721b05e59a251e9d160c6dab4c63021269a35d/examples/typescript/src/index.ts#L84
+    // https://github.com/espressif/esp-launchpad/blob/9ab150d7b32e4836fc3a33bcd9a00a1cfb1638c1/js/index.js#L396
+      connectButton.onclick = async () => {          
+          connectButton.disabled = true; 
+          lblConnTo.style.visibility = "visible";
+          lblConnTo.innerHTML = "Conectando ao ESP32. Aguarde";
+          device = await navigator.serial.requestPort();   
+          
+          //await device.open({baudRate: 9600});
+          await new Promise((resolve) => setTimeout(resolve, 100));
+          //console.log("Is locked after open?", device.readable.locked);
+          //device.addEventListener("connect", (event) => {
+          //  console.log("-------------- serial aberta -----------") ;
+          // });          
+          //device.onconnect = (event) => {console.log("-------------- ON serial aberta -----------") ;};
+
+          console.log(device.getInfo());       
+        
+          console.log("Device:") ;
+          console.log(device) ;
+          transport = new Transport(device);
+          console.log("Transport:") ;
+          console.log(transport) ;
+          console.log("-------------------------") ;   
+        
+          //try {
+               const flashOptions = {
+                                    transport,
+                                    baudrate: 921600, //921600, //115200
+                                    terminal: espLoaderTerminal,
+                                    };
+                esploader = new ESPLoader(flashOptions);                
+                console.log("-------------- main: -----------") ; 
+                chipDesc = await esploader.main();
+                chip = esploader.chip.CHIP_NAME;
+                console.log("-------------- flashId: -----------") ;
+                await esploader.flashId();
+                console.log("----------- Variavel Chip:--------") ;
+                console.log(chip) ;
+                //lblConnTo.style.visibility = "visible";
+                lblConnTo.innerHTML = "<b><span style='color:#17a2b8'>Connected to device: </span>" + chipDesc + "</b>";
+
+                //console.log("-------------- Programar: -----------") ; 
+                programar_esp32();
+            
+         //} catch(e) {
+         //  console.log(e) ;
+         // }
+       //document.getElementById("demo").innerHTML = device;
+    }
+    //-----------------------------------------------------------------------------
+    
+    
+
+    // --------------------------------------------------------------------------------
+    async function programar_esp32()
+      {
+        console.log("----------- Inicio Gravacao Firmware --------") ;
+
+        let fileURL = "https://33166ceb-1b35-45b5-ab5c-0965781387a8-00-15jh5h0dfiym8.picard.replit.dev/firmware_acionador_chave_11_10_2024.bin"
+        let data = await getImageData(fileURL);    
+        let fileArr = [];
+        let offset = 0x0000;
+        fileArr.push({data:data, address:offset});      
+
+        const flashOptions = {
+            fileArray : fileArr,
+            flashSize: "keep",
+            flashMode: undefined,
+            flashFreq: undefined,
+            eraseAll: false, //false
+            compress: true,            
+            reportProgress: (fileIndex, written, total) => {
+              //progressBars[fileIndex].value = (written / total) * 100;
+              //console.log(written);
+              console.log("progresso: " + (written / total) * 100);
+              progressbar.value =  (written / total) * 100;
+              lblEstado.innerHTML = "Gravando ESP32: " + Math.round((written / total) * 100) + "%"
+            },
+        };
+
+        await esploader.writeFlash(flashOptions);    
+        console.log("----------- Fim Gravacao Firmware --------") ;
+        await _sleep(1000);
+        if (transport) {
+          console.log("----------- Reset ESP32 --------") ;
+          await transport.setDTR(false);
+          await new Promise((resolve) => setTimeout(resolve, 300));
+          await transport.setDTR(true);
+        }
+        
+      }
+    //-----------------------------------------------------------------------------
+
+    //-----------------------------------------------------------------------------
+    // https://github.com/espressif/esp-launchpad/blob/9ab150d7b32e4836fc3a33bcd9a00a1cfb1638c1/js/utils.js#L22
+    function getImageData(fileURL) {
+        return new Promise(resolve => {
+            var xhr = new XMLHttpRequest();
+            xhr.open('GET', fileURL, true);
+            xhr.responseType = "blob";
+            xhr.send();
+            xhr.onload = function () {
+                if (xhr.readyState === 4 && xhr.status === 200) {
+                    var blob = new Blob([xhr.response], { type: "application/octet-stream" });
+                    var reader = new FileReader();
+                    reader.onload = (function (theFile) {
+                        return function (e) {
+                            resolve(e.target.result);
+                        };
+                    })(blob);
+                    reader.readAsBinaryString(blob);
+                } else {
+                    resolve(undefined);
+                }
+            };
+            xhr.onerror = function () {
+                resolve(undefined);
+            }
+        });
+    }  
+   
+    
+    //-----------------------------------------------------------------------------
+    const espLoaderTerminal = {
+      clean() {
+        //term.clear();
+      },
+      writeLine(data) {
+        //term.writeln(data);
+        console.log("terminal: " + data);
+        var texto_data = data;
+        if (texto_data.includes("Wrote"))
+          {
+            console.log("gravou com sucesso")         
+
+             lblEstado.innerHTML = "<b> <span style='background-color:#00cc66 ;color:#ffffff; text-align: center; 	padding: 1px;' > Firmware Acionador Gravado com Sucesso  </span> </b>"
+          }
+      },
+      write(data) {
+        //term.write(data);
+      },
+    };
+
+
+    
+    
+    function _sleep(ms) {
+        return new Promise(resolve => setTimeout(resolve, ms));
+    }
+
+
+    // referencia para reset:
+    /*
+ if (transport) {            
+            console.log("----------- Reset ESP32 1.1 --------") ;            
+            await device.open({baudRate: 115200});
+            await new Promise((resolve) => setTimeout(resolve, 500));
+            await transport.setDTR(false);
+            await new Promise((resolve) => setTimeout(resolve, 500));
+            await transport.setDTR(true);
+            await new Promise((resolve) => setTimeout(resolve, 500));
+            await device.close();
+            await new Promise((resolve) => setTimeout(resolve, 500));
+             // https://github.com/espressif/esptool/blob/7cc35e4e4df5568af94e0d1b9d3e737df8a00e7a/esptool/reset.py#L97
+            await transport.setDTR(false);
+            await transport.setRTS(true);
+            await new Promise((resolve) => setTimeout(resolve, 500));
+            await transport.setDTR(true);
+            await transport.setRTS(false);
+            await new Promise((resolve) => setTimeout(resolve, 500));
+            await transport.setDTR(false);
+            await new Promise((resolve) => setTimeout(resolve, 100));
+            await device.close();
+            await new Promise((resolve) => setTimeout(resolve, 500));
+
+
+
+            self._setDTR(False)  # IO0=HIGH
+            self._setRTS(True)  # EN=LOW, chip in reset
+            time.sleep(0.1)
+            self._setDTR(True)  # IO0=LOW
+            self._setRTS(False)  # EN=HIGH, chip out of reset
+            time.sleep(self.reset_delay)
+            self._setDTR(False)  # IO0=HIGH, done
+          }
+    
+
+    */
+  </script>
+</body>
+
+</html>
